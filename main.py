@@ -159,15 +159,22 @@ async def war_conflicts():
         source_db = ""
         redis_key = f"war:{doc_id}"
 
-        # 1. Try fetching from Redis first for maximum speed
+        # 1. Try fetching from Redis first (supporting RedisJSON & standard string fallback)
         if redis_client:
             try:
-                cached_json = await redis_client.get(redis_key)
-                if cached_json:
-                    data = json.loads(cached_json)
-                    source_db = "Redis Database (Fast Cache)"
-            except Exception as r_err:
-                print(f"⚠️ Redis read error: {r_err}")
+                # Try fetching as a RedisJSON object
+                data = await redis_client.json().get(redis_key)
+                if data:
+                    source_db = "Redis Database (JSON Cache)"
+            except Exception:
+                try:
+                    # Fallback to standard string get if JSON get fails
+                    cached_json = await redis_client.get(redis_key)
+                    if cached_json:
+                        data = json.loads(cached_json)
+                        source_db = "Redis Database (String Cache)"
+                except Exception as r_err:
+                    print(f"⚠️ Redis read error: {r_err}")
 
         # 2. Fallback to Firebase Firestore if not in Redis
         if not data:
@@ -181,9 +188,12 @@ async def war_conflicts():
                     # Store back in Redis asynchronously for future fast lookups
                     if redis_client:
                         try:
-                            await redis_client.set(redis_key, json.dumps(data))
-                        except Exception as cache_err:
-                            print(f"⚠️ Redis write-back error: {cache_err}")
+                            await redis_client.json().set(redis_key, "$", data)
+                        except Exception:
+                            try:
+                                await redis_client.set(redis_key, json.dumps(data))
+                            except Exception as cache_err:
+                                print(f"⚠️ Redis write-back error: {cache_err}")
 
         if not data:
             return f"War Document Not Found in Redis or Firebase: {doc_id}", 404
