@@ -80,7 +80,6 @@ async def background_war_fetcher():
                         except Exception as e:
                             print(f"  └─ ⚠️ Error processing clan {tag}: {e}", flush=True)
                         
-                        # Short pause to protect CoC API rate limit (429 prevention)
                         await asyncio.sleep(1.5)
                 
                 print(f"✅ [Background Worker] Completed cycle. {active_count} active wars cached into Redis.", flush=True)
@@ -96,7 +95,7 @@ async def background_war_fetcher():
 @app.before_serving
 async def startup():
     """Start background automated polling worker when Quart server starts."""
-    print("⚙️ Initializing app hooks...", flush=True)
+    print("⚙️ Initializing app background hooks...", flush=True)
     app.add_background_task(background_war_fetcher)
 
 # --- CoC API & Data Functions ---
@@ -323,7 +322,7 @@ async def home():
             """
 
         if not rows_html:
-            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 15px; color: gray;'>No live wars currently cached in Redis. Waiting for worker or <a href='/api/update_wars'>click here to refresh</a>.</td></tr>"
+            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 15px; color: gray;'>No live wars currently cached in Redis. Waiting for background fetch worker or <a href='/api/update_wars'>click here to trigger refresh</a>.</td></tr>"
 
         full_html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -375,6 +374,7 @@ async def home():
     except Exception as e:
         return f"Internal Error loading live wars: {str(e)}", 500
 
+@app.route('/update_wars', methods=['GET', 'POST'])
 @app.route('/api/update_wars', methods=['GET', 'POST'])
 async def update_wars():
     """Manual trigger to fetch all registered clans and populate Redis immediately."""
@@ -398,15 +398,6 @@ async def update_wars():
         "active_wars_cached": len(updated_ids),
         "war_doc_ids": updated_ids
     }), 200
-
-@app.route('/api/start_worker', methods=['GET'])
-async def start_worker():
-    """Explicit endpoint to start the background task if ASGI runner didn't call hook."""
-    global WORKER_RUNNING
-    if not WORKER_RUNNING:
-        asyncio.create_task(background_war_fetcher())
-        return jsonify({"status": "started", "message": "Background war worker started!"}), 200
-    return jsonify({"status": "already_running", "message": "Background worker is already running."}), 200
 
 @app.route('/api/check_clan_status', methods=['POST'])
 async def check_clan_status():
