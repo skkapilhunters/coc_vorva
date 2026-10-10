@@ -20,7 +20,7 @@ COC_KEYS = [k.strip() for k in raw_coc_keys.split(",") if k.strip()]
 firebase_creds_raw = os.environ.get("FIREBASE_CREDENTIALS")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
-# Initialize Redis Client for Fast Caching
+# Initialize Redis Client
 try:
     redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
     print("✅ Connected to Redis successfully.")
@@ -29,18 +29,26 @@ except Exception as e:
     redis_client = None
 
 # Initialize Firebase Admin SDK
+db = None
 if firebase_creds_raw:
     try:
         cred_dict = json.loads(firebase_creds_raw)
         if "private_key" in cred_dict:
-            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            # Fix PEM private key formatting
+            pk = cred_dict["private_key"]
+            pk = pk.replace("\\n", "\n")
+            cred_dict["private_key"] = pk
+
         cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
         print("✅ Connected to Firebase successfully.")
     except Exception as e:
-        print(f"⚠️ Error parsing FIREBASE_CREDENTIALS: {e}")
+        print(f"⚠️ Error parsing or connecting to Firebase: {e}")
+else:
+    print("⚠️ WARNING: FIREBASE_CREDENTIALS environment variable is missing or empty!")
 
-db = firestore.client() if firebase_admin._apps else None
 START_TIME = time.time()
 ACTIVE_TOKENS = {}
 
@@ -67,7 +75,7 @@ async def fetch_coc_player(player_tag):
                     if resp.status == 200:
                         return await resp.json()
                     elif resp.status in (403, 429):
-                        continue  # Key rate limited or invalid, try next key
+                        continue
                     elif resp.status == 404:
                         return None
             except Exception:
@@ -159,41 +167,50 @@ async def war_conflicts():
         source_db = ""
         redis_key = f"war:{doc_id}"
 
-        # 1. Try fetching from Redis first (supporting RedisJSON & standard string fallback)
+        # 1. Try fetching from Redis safely according to Key Type
         if redis_client:
             try:
-                # Try fetching as a RedisJSON object
-                data = await redis_client.json().get(redis_key)
-                if data:
-                    source_db = "Redis Database (JSON Cache)"
-            except Exception:
-                try:
-                    # Fallback to standard string get if JSON get fails
+                key_type = await redis_client.type(redis_key)
+                
+                if key_type in ("ReJSON-RL", "JSON"):
+                    data = await redis_client.json().get(redis_key)
+                    if data:
+                        source_db = "Redis Database (JSON Cache)"
+                elif key_type == "string":
                     cached_json = await redis_client.get(redis_key)
                     if cached_json:
                         data = json.loads(cached_json)
                         source_db = "Redis Database (String Cache)"
-                except Exception as r_err:
-                    print(f"⚠️ Redis read error: {r_err}")
+            except Exception as r_err:
+                print(f"⚠️ Redis read error: {r_err}")
 
-        # 2. Fallback to Firebase Firestore if not in Redis
+        # 2. Fallback to Firebase Firestore if missing in Redis
         if not data:
             if db:
-                doc_ref = db.collection('ended_wars').document(doc_id)
-                doc = doc_ref.get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    source_db = "Firebase Firestore"
-                    
-                    # Store back in Redis asynchronously for future fast lookups
-                    if redis_client:
-                        try:
-                            await redis_client.json().set(redis_key, "$", data)
-                        except Exception:
+                try:
+                    print(f"🔍 Checking Firebase Firestore for document ID: {doc_id}")
+                    doc_ref = db.collection('ended_wars').document(doc_id)
+                    doc = doc_ref.get()
+                    if doc.exists:
+                        data = doc.to_dict()
+                        source_db = "Firebase Firestore"
+                        print(f"✅ Found document {doc_id} in Firebase Firestore.")
+                        
+                        # Save back to Redis cache
+                        if redis_client:
                             try:
-                                await redis_client.set(redis_key, json.dumps(data))
-                            except Exception as cache_err:
-                                print(f"⚠️ Redis write-back error: {cache_err}")
+                                await redis_client.json().set(redis_key, "$", data)
+                            except Exception:
+                                try:
+                                    await redis_client.set(redis_key, json.dumps(data))
+                                except Exception as cache_err:
+                                    print(f"⚠️ Redis write-back error: {cache_err}")
+                    else:
+                        print(f"❌ Document {doc_id} does NOT exist in collection 'ended_wars'.")
+                except Exception as fb_err:
+                    print(f"⚠️ Firebase Firestore query error: {fb_err}")
+            else:
+                print("⚠️ Firebase `db` client is None. Credentials failed to load.")
 
         if not data:
             return f"War Document Not Found in Redis or Firebase: {doc_id}", 404
