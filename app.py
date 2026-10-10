@@ -23,9 +23,9 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 # Initialize Redis Client
 try:
     redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-    print("✅ Connected to Redis successfully.")
+    print("✅ Connected to Redis successfully.", flush=True)
 except Exception as e:
-    print(f"⚠️ Error connecting to Redis: {e}")
+    print(f"⚠️ Error connecting to Redis: {e}", flush=True)
     redis_client = None
 
 # Initialize Firebase Admin SDK
@@ -41,19 +41,70 @@ if firebase_creds_raw:
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred)
         db = firestore.client()
-        print("✅ Connected to Firebase successfully.")
+        print("✅ Connected to Firebase successfully.", flush=True)
     except Exception as e:
-        print(f"⚠️ Error parsing or connecting to Firebase: {e}")
+        print(f"⚠️ Error parsing or connecting to Firebase: {e}", flush=True)
 else:
-    print("⚠️ WARNING: FIREBASE_CREDENTIALS environment variable is missing or empty!")
+    print("⚠️ WARNING: FIREBASE_CREDENTIALS environment variable is missing or empty!", flush=True)
 
 START_TIME = time.time()
+WORKER_RUNNING = False
 
-# --- Helper Functions ---
+# --- Background Worker for Continuous Fetching ---
+
+async def background_war_fetcher():
+    """Continuously fetches and caches current wars for all registered clans every 5 minutes."""
+    global WORKER_RUNNING
+    WORKER_RUNNING = True
+    print("🚀 [Background Worker] Worker loop started successfully!", flush=True)
+
+    while True:
+        try:
+            print("🔄 [Background Worker] Starting scheduled clan war fetch cycle...", flush=True)
+            clans = await get_registered_clans()
+            if clans:
+                print(f"📋 Processing {len(clans)} registered clans...", flush=True)
+                active_count = 0
+                for clan in clans:
+                    tag = clan.get('clantag') or clan.get('clan tag') or clan.get('tag')
+                    name = clan.get('clan') or clan.get('Clan Name') or 'Unknown'
+                    if tag:
+                        print(f"🔍 Fetching current war for clan: {name} ({tag})...", flush=True)
+                        try:
+                            doc_id = await process_and_cache_clan_war(tag)
+                            if doc_id:
+                                active_count += 1
+                                print(f"  └─ ✅ Cached war record: war:{doc_id}", flush=True)
+                            else:
+                                print(f"  └─ ℹ️ Clan {name} is not currently in war or war details are hidden.", flush=True)
+                        except Exception as e:
+                            print(f"  └─ ⚠️ Error processing clan {tag}: {e}", flush=True)
+                        
+                        # Short pause to protect CoC API rate limit (429 prevention)
+                        await asyncio.sleep(1.5)
+                
+                print(f"✅ [Background Worker] Completed cycle. {active_count} active wars cached into Redis.", flush=True)
+            else:
+                print("⚠️ [Background Worker] No clans found in Redis or Firebase to process.", flush=True)
+
+        except Exception as e:
+            print(f"⚠️ Error in background war worker: {e}", flush=True)
+        
+        print("💤 [Background Worker] Sleeping for 5 minutes before next run...", flush=True)
+        await asyncio.sleep(300)
+
+@app.before_serving
+async def startup():
+    """Start background automated polling worker when Quart server starts."""
+    print("⚙️ Initializing app hooks...", flush=True)
+    app.add_background_task(background_war_fetcher)
+
+# --- CoC API & Data Functions ---
 
 async def fetch_coc_endpoint(endpoint_path):
     """Generic fetch utility for CoC API using key rotation."""
     if not COC_KEYS:
+        print("⚠️ No COC_KEYS set in environment!", flush=True)
         return None
 
     url = f"https://api.clashofclans.com/v1/{endpoint_path}"
@@ -69,10 +120,11 @@ async def fetch_coc_endpoint(endpoint_path):
                     if resp.status == 200:
                         return await resp.json()
                     elif resp.status in (403, 429):
-                        continue  # Key invalid or rate-limited, try next
+                        continue
                     elif resp.status == 404:
                         return None
-            except Exception:
+            except Exception as err:
+                print(f"⚠️ API request exception: {err}", flush=True)
                 continue
     return None
 
@@ -88,7 +140,6 @@ async def get_registered_clans():
     """Retrieve clans list from Redis, fallback to Firebase Firestore if empty."""
     clans = []
     
-    # 1. Try Redis first
     if redis_client:
         try:
             key_type = await redis_client.type("clans")
@@ -99,16 +150,15 @@ async def get_registered_clans():
                 if raw:
                     clans = json.loads(raw)
         except Exception as e:
-            print(f"⚠️ Error reading 'clans' from Redis: {e}")
+            print(f"⚠️ Error reading 'clans' from Redis: {e}", flush=True)
 
-    # 2. Fallback to Firebase Firestore if Redis returned nothing
     if not clans and db:
         try:
-            print("🔍 Fetching registered clans from Firebase Firestore...")
+            print("🔍 Fetching registered clans from Firebase Firestore...", flush=True)
             docs = db.collection('clans').stream()
             for doc in docs:
                 cdata = doc.to_dict()
-                tag = cdata.get('clan tag') or cdata.get('clantag') or ''
+                tag = cdata.get('clan tag') or cdata.get('clantag') or cdata.get('tag') or ''
                 name = cdata.get('Clan Name') or cdata.get('clan') or ''
                 if tag:
                     clans.append({
@@ -119,14 +169,14 @@ async def get_registered_clans():
                         "association": cdata.get('clan type', 'FWA')
                     })
             
-            # Save fetched clans to Redis for subsequent fast access
             if clans and redis_client:
                 try:
                     await redis_client.json().set("clans", "$", clans)
                 except Exception:
                     await redis_client.set("clans", json.dumps(clans))
+                print(f"✅ Cached {len(clans)} clans from Firebase into Redis.", flush=True)
         except Exception as fb_err:
-            print(f"⚠️ Error fetching clans from Firebase: {fb_err}")
+            print(f"⚠️ Error fetching clans from Firebase: {fb_err}", flush=True)
 
     return clans or []
 
@@ -145,13 +195,8 @@ async def process_and_cache_clan_war(clan_tag):
     clan_a = war_data.get('clan', {})
     clan_b = war_data.get('opponent', {})
 
-    # Generate document ID (e.g., using startTime hash or numeric ID)
     start_time_raw = war_data.get('startTime', str(int(time.time())))
     doc_id = str(abs(hash(f"{clan_a.get('tag')}_{clan_b.get('tag')}_{start_time_raw}")) % 1000000)
-
-    # Format members roster
-    clan_a_members = {m['tag']: m for m in clan_a.get('members', [])}
-    clan_b_members = {m['tag']: m for m in clan_b.get('members', [])}
 
     rosters = []
     all_positions = sorted(list(set([m.get('mapPosition', 0) for m in clan_a.get('members', [])])))
@@ -213,7 +258,6 @@ async def process_and_cache_clan_war(clan_tag):
         }
     }
 
-    # Store in Redis as RedisJSON
     redis_key = f"war:{doc_id}"
     if redis_client:
         try:
@@ -246,7 +290,7 @@ async def home():
                     if cached_json:
                         data = json.loads(cached_json)
             except Exception as e:
-                print(f"⚠️ Error reading key {key}: {e}")
+                print(f"⚠️ Error reading key {key}: {e}", flush=True)
 
             if data:
                 conflict_data = data.get('conflict_data', {})
@@ -279,7 +323,7 @@ async def home():
             """
 
         if not rows_html:
-            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 15px; color: gray;'>No live wars currently cached in Redis.</td></tr>"
+            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 15px; color: gray;'>No live wars currently cached in Redis. Waiting for worker or <a href='/api/update_wars'>click here to refresh</a>.</td></tr>"
 
         full_html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -304,8 +348,8 @@ async def home():
         <br><br>
         <span id="top">
             <b>⚡ Live Redis War Records</b><br>
-            Showing active match data currently loaded in memory.
-            <a href="/api/update_wars" class="update-btn">🔄 Refresh War Data</a>
+            Background worker automatically updates every 5 minutes.
+            <a href="/api/update_wars" class="update-btn">🔄 Force Refresh Now</a>
         </span>
 
         <table>
@@ -333,18 +377,20 @@ async def home():
 
 @app.route('/api/update_wars', methods=['GET', 'POST'])
 async def update_wars():
-    """Trigger API fetch for all registered clans and populate Redis."""
+    """Manual trigger to fetch all registered clans and populate Redis immediately."""
+    print("🔘 Manual war refresh triggered via API...", flush=True)
     clans = await get_registered_clans()
     if not clans:
         return jsonify({"status": "error", "message": "No clans found in Redis or Firebase"}), 400
 
     updated_ids = []
     for c in clans:
-        tag = c.get('clantag') or c.get('clan tag')
+        tag = c.get('clantag') or c.get('clan tag') or c.get('tag')
         if tag:
             doc_id = await process_and_cache_clan_war(tag)
             if doc_id:
                 updated_ids.append(doc_id)
+            await asyncio.sleep(1.0)
 
     return jsonify({
         "status": "success",
@@ -352,6 +398,15 @@ async def update_wars():
         "active_wars_cached": len(updated_ids),
         "war_doc_ids": updated_ids
     }), 200
+
+@app.route('/api/start_worker', methods=['GET'])
+async def start_worker():
+    """Explicit endpoint to start the background task if ASGI runner didn't call hook."""
+    global WORKER_RUNNING
+    if not WORKER_RUNNING:
+        asyncio.create_task(background_war_fetcher())
+        return jsonify({"status": "started", "message": "Background war worker started!"}), 200
+    return jsonify({"status": "already_running", "message": "Background worker is already running."}), 200
 
 @app.route('/api/check_clan_status', methods=['POST'])
 async def check_clan_status():
@@ -389,11 +444,9 @@ async def war_conflicts():
         source_db = ""
         redis_key = f"war:{doc_id}"
 
-        # 1. Try fetching from Redis safely according to Key Type
         if redis_client:
             try:
                 key_type = await redis_client.type(redis_key)
-                
                 if key_type in ("ReJSON-RL", "JSON"):
                     data = await redis_client.json().get(redis_key)
                     if data:
@@ -404,9 +457,8 @@ async def war_conflicts():
                         data = json.loads(cached_json)
                         source_db = "Redis Database (String Cache)"
             except Exception as r_err:
-                print(f"⚠️ Redis read error: {r_err}")
+                print(f"⚠️ Redis read error: {r_err}", flush=True)
 
-        # 2. Fallback to Firebase Firestore if missing in Redis
         if not data:
             if db:
                 try:
@@ -415,8 +467,6 @@ async def war_conflicts():
                     if doc.exists:
                         data = doc.to_dict()
                         source_db = "Firebase Firestore"
-                        
-                        # Save back to Redis cache
                         if redis_client:
                             try:
                                 await redis_client.json().set(redis_key, "$", data)
@@ -424,9 +474,9 @@ async def war_conflicts():
                                 try:
                                     await redis_client.set(redis_key, json.dumps(data))
                                 except Exception as cache_err:
-                                    print(f"⚠️ Redis write-back error: {cache_err}")
+                                    print(f"⚠️ Redis write-back error: {cache_err}", flush=True)
                 except Exception as fb_err:
-                    print(f"⚠️ Firebase Firestore query error: {fb_err}")
+                    print(f"⚠️ Firebase Firestore query error: {fb_err}", flush=True)
 
         if not data:
             return f"War Document Not Found in Redis or Firebase: {doc_id}", 404
@@ -479,7 +529,6 @@ async def war_conflicts():
             ca_def_html = format_defenses(ca.get('defenses'))
             cb_att_html = format_attacks(cb.get('attacks'))
 
-            # Mode 1
             view1_rows += f"""<tr>
                 <td>{pos}</td>
                 <td>{ca_name} (<a class="player-tag-link" data-tag="{ca_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={ca_tag}">{ca_tag}</a>) <span class="clan-status" data-tag="{ca_tag}"></span></td>
@@ -489,7 +538,6 @@ async def war_conflicts():
                 <td>{cb_def_html}</td>
             </tr>\n"""
 
-            # Mode 2 (Swapped)
             view2_rows += f"""<tr>
                 <td>{pos}</td>
                 <td>{ca_name} (<a class="player-tag-link" data-tag="{ca_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={ca_tag}">{ca_tag}</a>) <span class="clan-status" data-tag="{ca_tag}"></span></td>
@@ -583,7 +631,6 @@ async def war_conflicts():
             <b>Last Updated: </b>{war_meta.get('last_updated', 'N/A')}<br>
         </span>
 
-        <!-- View Switcher & Clan Check Button -->
         <div class="toggle-container">
             <button id="btn-view1" class="toggle-btn active" onclick="switchView(1)">
                 ⚔️ View 1: {clan_a.get('name')} Attacks ➔ {clan_b.get('name')} Defenses
@@ -626,12 +673,10 @@ async def war_conflicts():
                 </tr>
             </tbody>
 
-            <!-- Mode 1 Roster -->
             <tbody id="roster-view1">
                 {view1_rows}
             </tbody>
 
-            <!-- Mode 2 Roster -->
             <tbody id="roster-view2" style="display: none;">
                 {view2_rows}
             </tbody>
