@@ -80,71 +80,10 @@ async def fetch_coc_player(player_tag):
                 continue
     return None
 
-# --- Reusable Raboy's Flagship Dark Theme CSS ---
-THEME_CSS = """
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;700&display=swap');
-        
-        :root {
-            --canvas: #0F141B; --raised: #171D26; --raised-high: #1D2632; --inset: #0B1016;
-            --outline: #34404F; --outline-soft: #283340;
-            --text: #F3F5F7; --text-secondary: #B5BDC9; --text-muted: #8B95A5;
-            --gold: #D6B15E; --success: #68C79B; --warning: #E7A85F; --error: #EE8790; --info: #81AFE8;
-            --gold-hover: #e0c27c;
-            --font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
-            --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
-            --r-control: 10px; --r-card: 16px; --r-pill: 999px;
-        }
-        
-        body { font-family: var(--font-sans); font-size: 15px; background-color: var(--canvas); color: var(--text); margin: 0; -webkit-font-smoothing: antialiased; }
-        a { color: var(--info); text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        
-        /* Navigation Bar */
-        .bar { display: flex; align-items: center; padding: 0 40px; height: 60px; background: var(--canvas); border-bottom: 1px solid var(--outline-soft); }
-        .brand { color: var(--text); font-size: 18px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
-        .brand small { color: var(--text-muted); font-size: 13px; font-weight: 400; }
-        
-        /* Layout */
-        .container { width: 90%; max-width: 1200px; margin: 40px auto; }
-        .ui-panel { padding: 20px; border: 1px solid var(--outline); border-radius: var(--r-card); background: var(--raised); margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .ui-title { color: var(--gold); font-size: 20px; font-weight: 700; margin: 0 0 10px 0; }
-        .ui-lead { margin-top: 0; color: var(--text-secondary); font-size: 15px; }
-        
-        /* Tables */
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: var(--raised); border-radius: var(--r-card); overflow: hidden; border-style: hidden; box-shadow: 0 0 0 1px var(--outline-soft); }
-        th { border-bottom: 2px solid var(--outline); padding: 14px; font-size: 13px; text-align: left; background-color: var(--raised-high); color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
-        td { border-bottom: 1px solid var(--outline-soft); font-size: 14px; text-align: left; padding: 14px; vertical-align: middle; color: var(--text); }
-        td.mono { font-family: var(--font-mono); color: var(--text-secondary); }
-        td.lb { border-left: 1px solid var(--outline-soft); }
-        
-        /* Buttons */
-        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 16px; border-radius: var(--r-control); border: none; background: var(--gold); color: var(--inset); font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; transition: transform 0.12s var(--ease-out, ease-out), background 0.15s; }
-        .btn:hover { background: var(--gold-hover); text-decoration: none; transform: scale(0.975); }
-        .btn-outline { background: transparent; border: 1px solid var(--outline); color: var(--text-secondary); }
-        .btn-outline.active { border-color: var(--gold); background: var(--raised-high); color: var(--text); }
-        .btn-success { background: var(--success); color: var(--inset); }
-        
-        /* Badges & specific elements */
-        .badge { padding: 4px 8px; border-radius: var(--r-pill); font-size: 11px; font-weight: 700; font-family: var(--font-mono); display: inline-block; }
-        .badge-success { background: rgba(104, 199, 155, 0.15); color: var(--success); border: 1px solid var(--success); }
-        .badge-error { background: rgba(238, 135, 144, 0.15); color: var(--error); border: 1px solid var(--error); }
-        .db-badge { float: right; font-size: 12px; color: var(--success); font-weight: bold; border: 1px solid var(--success); padding: 4px 10px; border-radius: var(--r-pill); background: rgba(104, 199, 155, 0.1); }
-        .toggle-container { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 15px; margin: 20px 0; padding: 15px; border-radius: var(--r-card); background: var(--raised); border: 1px solid var(--outline-soft); }
-        .nav-back { color: var(--text-muted); font-size: 14px; font-weight: 500; display: inline-block; margin-bottom: 20px; }
-        .nav-back:hover { color: var(--text); }
-        
-        /* Helper Utilities */
-        .text-success { color: var(--success); font-weight: 700; }
-        .text-error { color: var(--error); font-weight: 700; }
-        .text-muted { color: var(--text-muted); font-size: 12px; }
-    </style>
-"""
-
 @app.route('/')
 @app.route('/live_wars')
 async def home():
-    """Homepage: Displays all active/cached war records stored in Redis using the new dark layout."""
+    """Homepage: Displays all active/cached war records stored in Redis using the original light layout."""
     if not redis_client:
         return "Redis is not connected.", 500
 
@@ -185,36 +124,42 @@ async def home():
         for war in live_wars_list:
             rows_html += f"""
             <tr>
-                <td class="mono">{war['doc_id']}</td>
-                <td><strong>{war['clan_a_name']}</strong><br><span class="text-muted">{war['clan_a_tag']}</span></td>
-                <td><strong>{war['clan_b_name']}</strong><br><span class="text-muted">{war['clan_b_tag']}</span></td>
-                <td><span class="text-success">{war['status']}</span></td>
-                <td class="mono">{war['war_ends']}</td>
-                <td><a href="/war_conflicts?{war['doc_id']}" class="btn">Inspect Match</a></td>
+                <td style="font-family: monospace;">{war['doc_id']}</td>
+                <td><b>{war['clan_a_name']}</b><br><span style="font-size:12px; color: gray;">{war['clan_a_tag']}</span></td>
+                <td><b>{war['clan_b_name']}</b><br><span style="font-size:12px; color: gray;">{war['clan_b_tag']}</span></td>
+                <td><span style="color: green; font-weight: bold;">{war['status']}</span></td>
+                <td style="font-size: 14px;">{war['war_ends']}</td>
+                <td><a href="/war_conflicts?{war['doc_id']}" style="background-color: #2980b9; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; text-decoration: none;">Inspect Match</a></td>
             </tr>
             """
 
         if not rows_html:
-            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 30px; color: var(--text-muted);'>No live wars currently cached in Redis.</td></tr>"
+            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 15px; color: gray;'>No live wars currently cached in Redis.</td></tr>"
 
         full_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chocolate Clash: Live Redis Wars</title>
-    {THEME_CSS}
+    <style>
+        body {{ font-family: "Times New Roman", Times, serif; font-size: 16px; background-color: #ffffff; color: #000000; margin: 0; padding: 20px; }}
+        #container {{ width: 85%; max-width: 1100px; margin: 20px auto; border: 1px solid black; text-align: center; padding: 20px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }}
+        #title {{ font-weight: bold; font-size: 32px; color: #000000; }}
+        #top {{ display: block; text-align: center; font-size: 16px; margin-bottom: 20px; color: #333; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+        th {{ border-bottom: 2px solid black; padding: 10px; font-size: 15px; text-align: left; background-color: #f8f9fa; }}
+        td {{ border-bottom: 1px solid gray; font-size: 15px; text-align: left; padding: 10px 8px; vertical-align: middle; color: #000000; }}
+        a {{ text-decoration: none; color: blue; }}
+    </style>
 </head>
 <body>
-    <header class="bar">
-        <a class="brand" href="/">Chocolate Clash <small>by FWA</small></a>
-    </header>
-    
-    <div class="container">
-        <div class="ui-panel">
-            <h1 class="ui-title">⚡ Live Redis War Records</h1>
-            <p class="ui-lead">Showing active match data currently loaded in memory.</p>
-        </div>
+    <div id="container">
+        <span id="title">FWA ChocolateClash</span>
+        <br><br>
+        <span id="top">
+            <b>⚡ Live Redis War Records</b><br>
+            Showing active match data currently loaded in memory.
+        </span>
 
         <table>
             <thead>
@@ -327,7 +272,7 @@ async def war_conflicts():
 
         def format_attacks(attacks_list):
             if not attacks_list:
-                return "<span class='text-muted'>No attacks</span>"
+                return "<span style='color: #7f8c8d;'>No attacks</span>"
             formatted = []
             for i, att in enumerate(attacks_list, 1):
                 if isinstance(att, str):
@@ -338,7 +283,7 @@ async def war_conflicts():
 
         def format_defenses(defenses_list):
             if not defenses_list:
-                return "<span class='text-error'>Pending / Untouched</span>"
+                return "<span style='color: #c0392b; font-weight: bold;'>Pending / Untouched</span>"
             formatted = []
             for i, def_log in enumerate(defenses_list, 1):
                 if isinstance(def_log, str):
@@ -367,21 +312,21 @@ async def war_conflicts():
 
             # Mode 1
             view1_rows += f"""<tr>
-                <td class="mono">{pos}</td>
-                <td><strong>{ca_name}</strong> (<a class="player-tag-link" data-tag="{ca_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={ca_tag}">{ca_tag}</a>) <span class="clan-status" data-tag="{ca_tag}"></span></td>
+                <td>{pos}</td>
+                <td>{ca_name} (<a class="player-tag-link" data-tag="{ca_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={ca_tag}">{ca_tag}</a>) <span class="clan-status" data-tag="{ca_tag}"></span></td>
                 <td>{ca_att_html}</td>
-                <td class='lb mono'>{pos}</td>
-                <td><strong>{cb_name}</strong> (<a class="player-tag-link" data-tag="{cb_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={cb_tag}">{cb_tag}</a>) <span class="clan-status" data-tag="{cb_tag}"></span></td>
+                <td class='lb'>{pos}</td>
+                <td>{cb_name} (<a class="player-tag-link" data-tag="{cb_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={cb_tag}">{cb_tag}</a>) <span class="clan-status" data-tag="{cb_tag}"></span></td>
                 <td>{cb_def_html}</td>
             </tr>\n"""
 
             # Mode 2 (Swapped)
             view2_rows += f"""<tr>
-                <td class="mono">{pos}</td>
-                <td><strong>{ca_name}</strong> (<a class="player-tag-link" data-tag="{ca_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={ca_tag}">{ca_tag}</a>) <span class="clan-status" data-tag="{ca_tag}"></span></td>
+                <td>{pos}</td>
+                <td>{ca_name} (<a class="player-tag-link" data-tag="{ca_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={ca_tag}">{ca_tag}</a>) <span class="clan-status" data-tag="{ca_tag}"></span></td>
                 <td>{ca_def_html}</td>
-                <td class='lb mono'>{pos}</td>
-                <td><strong>{cb_name}</strong> (<a class="player-tag-link" data-tag="{cb_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={cb_tag}">{cb_tag}</a>) <span class="clan-status" data-tag="{cb_tag}"></span></td>
+                <td class='lb'>{pos}</td>
+                <td>{cb_name} (<a class="player-tag-link" data-tag="{cb_tag}" href="https://link.clashofclans.com/en/?action=OpenPlayerProfile&tag={cb_tag}">{cb_tag}</a>) <span class="clan-status" data-tag="{cb_tag}"></span></td>
                 <td>{cb_att_html}</td>
             </tr>\n"""
 
@@ -389,37 +334,95 @@ async def war_conflicts():
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chocolate Clash: Viewing War</title>
-    {THEME_CSS}
+    <style>
+        body {{ font-family: "Times New Roman", Times, serif; font-size: 16px; background-color: #ffffff; color: #000000; margin: 0; padding: 20px; }}
+        #container {{ width: 80%; margin: 20px auto; border: 1px solid black; text-align: center; padding: 15px; background-color: #ffffff; }}
+        #title {{ font-weight: bold; font-size: 32px; color: #000000; }}
+        #top {{ display: block; text-align: left; font-size: 16px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+        td {{ border-bottom: 1px solid gray; font-size: 15px; text-align: left; padding: 5px; vertical-align: top; color: #000000; }}
+        td.lb {{ border-left: 1px solid gray; }}
+        a {{ text-decoration: none; color: blue; }}
+        .db-badge {{ font-size: 12px; color: green; font-weight: bold; float: right; }}
+        
+        .toggle-container {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 15px 0;
+            background: #f0f3f8;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccd1d9;
+        }}
+        .toggle-btn {{
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            border: 1px solid #34495e;
+            background-color: #ffffff;
+            color: #2c3e50;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: 0.2s;
+        }}
+        .toggle-btn.active {{
+            background-color: #2980b9;
+            color: #ffffff;
+            border-color: #2980b9;
+        }}
+        .badge-in-clan {{
+            background-color: #27ae60;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+        }}
+        .badge-no-clan {{
+            background-color: #e74c3c;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+        }}
+        .nav-back-link {{
+            float: left;
+            font-size: 14px;
+            font-weight: bold;
+            color: #2980b9;
+        }}
+    </style>
 </head>
 <body>
-    <header class="bar">
-        <a class="brand" href="/">Chocolate Clash <small>by FWA</small></a>
-    </header>
-
-    <div class="container">
-        <a href="/" class="nav-back">← Back to Live Wars</a>
-        
-        <div class="ui-panel" style="position: relative;">
-            <span class="db-badge">Loaded from {source_db}</span>
-            <h1 class="ui-title">Saved Clan War Details</h1>
-            <p class="ui-lead" style="margin-bottom: 5px;"><strong>Prep. Day Start:</strong> <span class="mono">{war_meta.get('prep_day_start', 'N/A')}</span></p>
-            <p class="ui-lead" style="margin-bottom: 5px;"><strong>Battle Day Start:</strong> <span class="mono">{war_meta.get('battle_day_start', 'N/A')}</span></p>
-            <p class="ui-lead" style="margin-bottom: 5px;"><strong>War Ends:</strong> <span class="mono">{war_meta.get('war_ends', 'N/A')}</span></p>
-            <p class="ui-lead" style="margin-bottom: 5px;"><strong>Status:</strong> <span class="text-success">{war_meta.get('status', 'N/A')}</span></p>
-            <p class="ui-lead"><strong>Last Updated:</strong> <span class="mono">{war_meta.get('last_updated', 'N/A')}</span></p>
-        </div>
+    <div id="container">
+        <a href="/" class="nav-back-link">← Home (Live Wars)</a>
+        <span id="title">FWA ChocolateClash</span>
+        <br><br>
+        <span id="top">
+            Showing details for a saved clan war.
+            <span class="db-badge">Loaded from {source_db}</span><br><br>
+            <b>Prep. Day Start: </b>{war_meta.get('prep_day_start', 'N/A')}<br>
+            <b>Battle Day Start: </b>{war_meta.get('battle_day_start', 'N/A')}<br>
+            <b>War Ends: </b>{war_meta.get('war_ends', 'N/A')}<br><br>
+            <b>Status: </b>{war_meta.get('status', 'N/A')}<br>
+            <b>Last Updated: </b>{war_meta.get('last_updated', 'N/A')}<br>
+        </span>
 
         <!-- View Switcher & Clan Check Button -->
         <div class="toggle-container">
-            <button id="btn-view1" class="btn btn-outline active" onclick="switchView(1)">
-                ⚔️ {clan_a.get('name')} Attacks ➔ {clan_b.get('name')} Defenses
+            <button id="btn-view1" class="toggle-btn active" onclick="switchView(1)">
+                ⚔️ View 1: {clan_a.get('name')} Attacks ➔ {clan_b.get('name')} Defenses
             </button>
-            <button id="btn-view2" class="btn btn-outline" onclick="switchView(2)">
-                🛡️ {clan_a.get('name')} Defenses ⬅ {clan_b.get('name')} Attacks
+            <button id="btn-view2" class="toggle-btn" onclick="switchView(2)">
+                🛡️ View 2: {clan_a.get('name')} Defenses ⬅ {clan_b.get('name')} Attacks
             </button>
-            <button id="btn-check-clan" class="btn btn-success" style="margin-left: auto;" onclick="checkClanStatus()">
+            <button id="btn-check-clan" class="toggle-btn" style="background-color: #27ae60; color: white;" onclick="checkClanStatus()">
                 🔍 Check Live Clan Status
             </button>
         </div>
@@ -427,29 +430,29 @@ async def war_conflicts():
         <table>
             <tbody>
                 <tr>
-                    <td style="width:2%; border-bottom:none;">&nbsp;</td>
-                    <td colspan="2" style="width:48%; border-bottom:none;">
-                        <span id="header-clan-a" style="color:var(--gold); font-weight:700; font-size:16px;">
+                    <td style="width:2%">&nbsp;</td>
+                    <td colspan="2" style="width:48%">
+                        <span id="header-clan-a" style="color:red; font-weight:bold; font-size:17px;">
                             {clan_a.get('name')} (Attacks)
                         </span>
                     </td>
-                    <td style="width:2%; border-bottom:none;" class="lb">&nbsp;</td>
-                    <td colspan="2" style="width:48%; border-bottom:none;">
-                        <span id="header-clan-b" style="color:var(--gold); font-weight:700; font-size:16px;">
+                    <td style="width:2%">&nbsp;</td>
+                    <td colspan="2" style="width:48%">
+                        <span id="header-clan-b" style="color:red; font-weight:bold; font-size:17px;">
                             {clan_b.get('name')} (Bases / Defense Status)
                         </span>
                     </td>
                 </tr>
                 <tr>
-                    <td><img style="width: 48px; height: 48px; border-radius: 8px;" src="{clan_a.get('badge', 'https://api-assets.clashofclans.com/leagues/72/e--YMyIexEQQhE4imLoJcwhYn6Uy8KqlgyY3_kFV6t4.png')}" alt="Badge"></td>
-                    <td colspan="2" style="line-height: 1.6;">
-                        <strong>{clan_a.get('name', 'N/A')}</strong> (<a href="https://link.clashofclans.com/en/?action=OpenClanProfile&tag={clan_a.get('tag')}">{clan_a.get('tag', '')}</a>) lvl. {clan_a.get('level', 0)}<br>
-                        <span class="text-muted">{clan_a.get('members_count', 0)} people, {clan_a.get('stars', 0)}★ {clan_a.get('destruction_percentage', '0.0%')} {clan_a.get('attacks_used', 0)} Attacks</span>
+                    <td><img style="width: 48px; height: 48px;" src="{clan_a.get('badge', 'https://api-assets.clashofclans.com/leagues/72/e--YMyIexEQQhE4imLoJcwhYn6Uy8KqlgyY3_kFV6t4.png')}" alt="Badge"></td>
+                    <td colspan="2">
+                        {clan_a.get('name', 'N/A')} (<a href="https://link.clashofclans.com/en/?action=OpenClanProfile&tag={clan_a.get('tag')}">{clan_a.get('tag', '')}</a>) lvl. {clan_a.get('level', 0)}<br>
+                        {clan_a.get('members_count', 0)} people, {clan_a.get('stars', 0)}★ {clan_a.get('destruction_percentage', '0.0%')} {clan_a.get('attacks_used', 0)} Attacks
                     </td>
-                    <td class="lb"><img style="width: 48px; height: 48px; border-radius: 8px;" src="{clan_b.get('badge', 'https://api-assets.clashofclans.com/leagues/72/e--YMyIexEQQhE4imLoJcwhYn6Uy8KqlgyY3_kFV6t4.png')}" alt="Badge"></td>
-                    <td colspan="2" style="line-height: 1.6;">
-                        <strong>{clan_b.get('name', 'N/A')}</strong> (<a href="https://link.clashofclans.com/en/?action=OpenClanProfile&tag={clan_b.get('tag')}">{clan_b.get('tag', '')}</a>) lvl. {clan_b.get('level', 0)}<br>
-                        <span class="text-muted">{clan_b.get('members_count', 0)} people, {clan_b.get('stars', 0)}★ {clan_b.get('destruction_percentage', '0.0%')} {clan_b.get('attacks_used', 0)} Attacks</span>
+                    <td class="lb" style="width: 2%;"><img style="width: 48px; height: 48px;" src="{clan_b.get('badge', 'https://api-assets.clashofclans.com/leagues/72/e--YMyIexEQQhE4imLoJcwhYn6Uy8KqlgyY3_kFV6t4.png')}" alt="Badge"></td>
+                    <td colspan="2">
+                        {clan_b.get('name', 'N/A')} (<a href="https://link.clashofclans.com/en/?action=OpenClanProfile&tag={clan_b.get('tag')}">{clan_b.get('tag', '')}</a>) lvl. {clan_b.get('level', 0)}<br>
+                        {clan_b.get('members_count', 0)} people, {clan_b.get('stars', 0)}★ {clan_b.get('destruction_percentage', '0.0%')} {clan_b.get('attacks_used', 0)} Attacks
                     </td>
                 </tr>
             </tbody>
@@ -525,9 +528,9 @@ async def war_conflicts():
                     const info = results[tag];
                     if (info) {{
                         if (info.in_clan) {{
-                            span.innerHTML = `<span class="badge badge-success" title="${{info.clan_tag}}">🟢 In Clan: ${{info.clan_name}}</span>`;
+                            span.innerHTML = `<span class="badge-in-clan" title="${{info.clan_tag}}">🟢 In Clan: ${{info.clan_name}}</span>`;
                         }} else {{
-                            span.innerHTML = `<span class="badge badge-error">🔴 No Clan</span>`;
+                            span.innerHTML = `<span class="badge-no-clan">🔴 No Clan</span>`;
                         }}
                     }}
                 }});
