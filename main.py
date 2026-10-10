@@ -34,9 +34,7 @@ if firebase_creds_raw:
     try:
         cred_dict = json.loads(firebase_creds_raw)
         if "private_key" in cred_dict:
-            # Fix PEM private key formatting
-            pk = cred_dict["private_key"]
-            pk = pk.replace("\\n", "\n")
+            pk = cred_dict["private_key"].replace("\\n", "\n")
             cred_dict["private_key"] = pk
 
         cred = credentials.Certificate(cred_dict)
@@ -96,16 +94,16 @@ def get_base_html(title, content):
                 --success-color: #2ecc71; --text-color: #f8f9fc; --text-muted: #a0aec0; --danger-color: #e74c3c;
             }}
             body {{ font-family: 'Segoe UI', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }}
-            .container {{ width: 100%; max-width: 800px; padding: 20px; box-sizing: border-box; }}
+            .container {{ width: 100%; max-width: 900px; padding: 20px; box-sizing: border-box; }}
             .profile-card {{ background: var(--card-bg); border-radius: 16px; padding: 30px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 24px; }}
             .status-badge {{ display: inline-flex; align-items: center; background: rgba(46, 204, 113, 0.1); color: var(--success-color); padding: 6px 16px; border-radius: 20px; font-weight: 600; }}
             .status-dot {{ width: 8px; height: 8px; background-color: var(--success-color); border-radius: 50%; margin-right: 8px; }}
-            .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }}
+            .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 20px; }}
             .stat-card {{ background: var(--card-bg); border-radius: 12px; padding: 20px; text-align: center; }}
             .stat-value {{ font-size: 1.6rem; font-weight: bold; }}
             .stat-label {{ font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; }}
-            textarea {{ width: 100%; height: 350px; background-color: #121420; color: #00ff66; border-radius: 8px; padding: 15px; font-family: monospace; box-sizing: border-box; }}
-            button {{ background-color: var(--accent-color); color: white; border: none; padding: 14px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; }}
+            .nav-btn {{ display: inline-block; background-color: var(--accent-color); color: white; text-decoration: none; padding: 12px 24px; font-size: 15px; font-weight: bold; border-radius: 8px; margin-top: 15px; transition: 0.2s; }}
+            .nav-btn:hover {{ background-color: #3b5998; }}
             footer {{ text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--text-muted); }}
         </style>
     </head>
@@ -115,21 +113,111 @@ def get_base_html(title, content):
     </html>
     """
 
-@app.route('/')
+@app.route('/live_wars')
 async def home():
     uptime_seconds = int(time.time() - START_TIME)
     uptime_hours, uptime_mins = uptime_seconds // 3600, (uptime_seconds % 3600) // 60
 
     homepage_content = f"""
     <div class="profile-card">
-        <h1>Clan War Tracker</h1>
+        <h1>Clan War Tracker Dashboard</h1>
         <div class="status-badge"><span class="status-dot"></span>ONLINE & OPERATIONAL (Redis + Firebase Active)</div>
+        <br>
+        <a href="/live_wars" class="nav-btn">🚀 View All Live Wars (Redis Cache)</a>
     </div>
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-value">{uptime_hours}h {uptime_mins}m</div><div class="stat-label">Uptime</div></div>
     </div>
     """
     return get_base_html("Clan War Tracker - Dashboard", homepage_content)
+
+@app.route('/', methods=['GET'])
+async def live_wars():
+    """Displays all active/cached war records currently stored in Redis."""
+    if not redis_client:
+        return "Redis is not connected.", 500
+
+    try:
+        live_wars_list = []
+        async for key in redis_client.scan_iter("war:*"):
+            doc_id = key.split(":")[-1]
+            data = None
+            try:
+                key_type = await redis_client.type(key)
+                if key_type in ("ReJSON-RL", "JSON"):
+                    data = await redis_client.json().get(key)
+                elif key_type == "string":
+                    cached_json = await redis_client.get(key)
+                    if cached_json:
+                        data = json.loads(cached_json)
+            except Exception as e:
+                print(f"⚠️ Error reading key {key}: {e}")
+
+            if data:
+                conflict_data = data.get('conflict_data', {})
+                war_meta = conflict_data.get('war_metadata', {})
+                clans = conflict_data.get('clans', {})
+                clan_a = clans.get('clan_a', {})
+                clan_b = clans.get('clan_b', {})
+                
+                live_wars_list.append({
+                    "doc_id": doc_id,
+                    "clan_a_name": clan_a.get('name', 'Unknown Clan A'),
+                    "clan_a_tag": clan_a.get('tag', ''),
+                    "clan_b_name": clan_b.get('name', 'Unknown Clan B'),
+                    "clan_b_tag": clan_b.get('tag', ''),
+                    "status": war_meta.get('status', 'N/A'),
+                    "war_ends": war_meta.get('war_ends', 'N/A')
+                })
+
+        rows_html = ""
+        for war in live_wars_list:
+            rows_html += f"""
+            <tr style="border-bottom: 1px solid #2d3748;">
+                <td style="padding: 12px; font-family: monospace; color: #a0aec0;">{war['doc_id']}</td>
+                <td style="padding: 12px;"><b>{war['clan_a_name']}</b><br><span style="font-size:0.8rem; color:#a0aec0;">{war['clan_a_tag']}</span></td>
+                <td style="padding: 12px;"><b>{war['clan_b_name']}</b><br><span style="font-size:0.8rem; color:#a0aec0;">{war['clan_b_tag']}</span></td>
+                <td style="padding: 12px;"><span style="background: rgba(46,204,113,0.15); color: #2ecc71; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: bold;">{war['status']}</span></td>
+                <td style="padding: 12px; font-size: 0.9rem; color: #a0aec0;">{war['war_ends']}</td>
+                <td style="padding: 12px;"><a href="/war_conflicts?{war['doc_id']}" style="background-color: #4e73df; color: white; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: bold;">Inspect Match</a></td>
+            </tr>
+            """
+
+        if not rows_html:
+            rows_html = "<tr><td colspan='6' style='text-align:center; padding: 20px; color: #a0aec0;'>No live wars currently cached in Redis.</td></tr>"
+
+        page_content = f"""
+        <div style="background: var(--card-bg); border-radius: 16px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <h1 style="text-align: center; margin-bottom: 10px;">⚡ Live Redis War Records</h1>
+            <p style="text-align: center; color: var(--text-muted); margin-bottom: 25px;">Real-time match data currently loaded from memory.</p>
+            
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #4e73df; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">
+                            <th style="padding: 10px;">ID</th>
+                            <th style="padding: 10px;">Clan A</th>
+                            <th style="padding: 10px;">Opponent (Clan B)</th>
+                            <th style="padding: 10px;">Status</th>
+                            <th style="padding: 10px;">War Ends</th>
+                            <th style="padding: 10px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="text-align: center; margin-top: 25px;">
+                <a href="/" style="color: var(--accent-color); text-decoration: none; font-weight: bold;">← Back to Dashboard</a>
+            </div>
+        </div>
+        """
+        return get_base_html("Live Wars - Redis Cache", page_content), 200
+
+    except Exception as e:
+        return f"Internal Error loading live wars: {str(e)}", 500
 
 @app.route('/api/check_clan_status', methods=['POST'])
 async def check_clan_status():
@@ -188,13 +276,11 @@ async def war_conflicts():
         if not data:
             if db:
                 try:
-                    print(f"🔍 Checking Firebase Firestore for document ID: {doc_id}")
                     doc_ref = db.collection('ended_wars').document(doc_id)
                     doc = doc_ref.get()
                     if doc.exists:
                         data = doc.to_dict()
                         source_db = "Firebase Firestore"
-                        print(f"✅ Found document {doc_id} in Firebase Firestore.")
                         
                         # Save back to Redis cache
                         if redis_client:
@@ -205,12 +291,8 @@ async def war_conflicts():
                                     await redis_client.set(redis_key, json.dumps(data))
                                 except Exception as cache_err:
                                     print(f"⚠️ Redis write-back error: {cache_err}")
-                    else:
-                        print(f"❌ Document {doc_id} does NOT exist in collection 'ended_wars'.")
                 except Exception as fb_err:
                     print(f"⚠️ Firebase Firestore query error: {fb_err}")
-            else:
-                print("⚠️ Firebase `db` client is None. Credentials failed to load.")
 
         if not data:
             return f"War Document Not Found in Redis or Firebase: {doc_id}", 404
